@@ -33,26 +33,16 @@ npx serve .
 
 ## Deployment
 
-### GitHub Pages
+### Live Demo
+**https://sourabh-sk1.github.io/HandConnect/**
+
+The project is successfully deployed and working on GitHub Pages!
+
+### GitHub Pages Setup
 1. Push to GitHub repository
 2. Enable GitHub Pages in repository settings
 3. Select source branch (usually `main`)
-
-### Netlify
-1. Drag and drop project folder to https://app.netlify.com/drop
-2. Or connect GitHub repository for auto-deployment
-
-### Vercel
-```bash
-npm i -g vercel
-vercel --prod
-```
-
-### Surge.sh
-```bash
-npm i -g surge
-surge
-```
+4. Choose root folder (/) as source
 
 ## Requirements
 
