@@ -23,23 +23,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    # Step 2: Setup Node.js environment (for potential npm scripts)
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    # Step 3: Install dependencies if package.json exists
+    # Step 2: Install dependencies if package.json exists
     - name: Install dependencies
       run: |
         if [ -f package.json ]; then
           npm ci
         else
-          echo "No package.json found - skipping npm install"
+          echo "No package.json found - this is a static HTML project"
         fi
       
-    # Step 4: Run tests if available
+    # Step 3: Run tests if available
     - name: Run tests
       run: |
         if [ -f package.json ] && npm run test --if-present; then
@@ -48,7 +41,7 @@ jobs:
           echo "No tests found - skipping test step"
         fi
       
-    # Step 5: Build project if build script exists
+    # Step 4: Build project if build script exists
     - name: Build project
       run: |
         if [ -f package.json ] && npm run build --if-present; then
@@ -57,7 +50,7 @@ jobs:
           echo "No build script found - this is a static HTML project"
         fi
       
-    # Step 6: Validate HTML syntax
+    # Step 5: Validate HTML syntax
     - name: Validate HTML
       run: |
         if [ -f index.html ]; then
@@ -69,7 +62,7 @@ jobs:
           exit 1
         fi
       
-    # Step 7: Check for critical files
+    # Step 6: Check for critical files
     - name: Verify project structure
       run: |
         echo "Checking project structure..."
@@ -83,7 +76,7 @@ jobs:
           fi
         done
         
-    # Step 8: Upload artifacts for deployment
+    # Step 7: Upload artifacts for deployment
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
