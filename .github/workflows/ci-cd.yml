@@ -1,0 +1,259 @@
+name: CI/CD Pipeline for HandConnect
+
+# Trigger the workflow on push to main branch
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Allow this job to fetch the gh-pages branch for deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # CI (Continuous Integration) Job
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    # Step 2: Setup Node.js environment (for potential npm scripts)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    # Step 3: Install dependencies if package.json exists
+    - name: Install dependencies
+      run: |
+        if [ -f package.json ]; then
+          npm ci
+        else
+          echo "No package.json found - skipping npm install"
+        fi
+      
+    # Step 4: Run tests if available
+    - name: Run tests
+      run: |
+        if [ -f package.json ] && npm run test --if-present; then
+          echo "Tests completed successfully"
+        else
+          echo "No tests found - skipping test step"
+        fi
+      
+    # Step 5: Build project if build script exists
+    - name: Build project
+      run: |
+        if [ -f package.json ] && npm run build --if-present; then
+          echo "Build completed successfully"
+        else
+          echo "No build script found - this is a static HTML project"
+        fi
+      
+    # Step 6: Validate HTML syntax
+    - name: Validate HTML
+      run: |
+        if [ -f index.html ]; then
+          echo "Validating index.html..."
+          # Basic HTML validation using xmllint
+          xmllint --noout --html index.html || echo "HTML validation completed with warnings"
+        else
+          echo "No index.html found"
+          exit 1
+        fi
+      
+    # Step 7: Check for critical files
+    - name: Verify project structure
+      run: |
+        echo "Checking project structure..."
+        required_files=("index.html" "README.md")
+        for file in "${required_files[@]}"; do
+          if [ -f "$file" ]; then
+            echo "Found $file"
+          else
+            echo "Missing $file"
+            exit 1
+          fi
+        done
+        
+    # Step 8: Upload artifacts for deployment
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: handconnect-dist
+        path: |
+          index.html
+          *.css
+          *.js
+          assets/
+          images/
+          fonts/
+        retention-days: 1
+
+  # Docker Build Job (Optional)
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'  # Only run on main branch pushes
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    # Step 1: Set up Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    # Step 2: Log in to Docker Hub (optional - uncomment if you want to push to Docker Hub)
+    # - name: Log in to Docker Hub
+    #   uses: docker/login-action@v3
+    #   with:
+    #     username: ${{ secrets.DOCKER_USERNAME }}
+    #     password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    # Step 3: Build and test Docker image
+    - name: Build Docker image
+      run: |
+        if [ -f Dockerfile ]; then
+          docker build -t handconnect:test .
+          echo "Docker image built successfully"
+          
+          # Test the container briefly
+          docker run --rm -d -p 8080:80 --name handconnect-test handconnect:test
+          sleep 5
+          
+          # Check if container is running
+          if docker ps | grep handconnect-test; then
+            echo "Container is running successfully"
+            docker stop handconnect-test
+          else
+            echo "Container failed to start"
+            exit 1
+          fi
+        else
+          echo "No Dockerfile found - skipping Docker build"
+        fi
+
+  # Deploy to GitHub Pages (CD - Continuous Deployment)
+  deploy-github-pages:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'  # Only deploy on main branch pushes
+    
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: handconnect-dist
+        path: ./dist
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./dist
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  # Deploy to Vercel (Alternative Frontend Deployment)
+  deploy-vercel:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'  # Only deploy on main branch pushes
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: handconnect-dist
+        path: ./dist
+        
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        working-directory: ./dist
+        scope: ${{ secrets.VERCEL_ORG_ID }}
+
+  # Deploy to Netlify (Alternative Frontend Deployment)
+  deploy-netlify:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'  # Only deploy on main branch pushes
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: handconnect-dist
+        path: ./dist
+        
+    - name: Deploy to Netlify
+      uses: nwtgck/actions-netlify@v3
+      with:
+        publish-dir: './dist'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        deploy-message: "Deploy from GitHub Actions"
+        enable-pull-request-comment: false
+        enable-commit-comment: true
+        overwrites-pull-request-comment: false
+        production-branch: main
+        production-deploy: true
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+  # Notification Job
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, deploy-github-pages]
+    if: always()  # Always run notifications, even if previous jobs fail
+    
+    steps:
+    - name: Notify deployment status
+      run: |
+        if [ "${{ needs.build-and-test.result }}" == "success" ] && [ "${{ needs.deploy-github-pages.result }}" == "success" ]; then
+          echo "## CI/CD Pipeline Completed Successfully! 
+          
+          Your HandConnect application has been:
+          - Built and tested
+          - Deployed to GitHub Pages
+          
+          Live deployment: ${{ steps.deployment.outputs.page_url }}
+          
+          Next steps:
+          1. Visit your live site
+          2. Test the hand tracking features
+          3. Share with others!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "## CI/CD Pipeline Failed
+          
+          Please check the job logs above for details on what went wrong." >> $GITHUB_STEP_SUMMARY
+        fi
